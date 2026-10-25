@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.example</groupId>
+        <artifactId>spring-ai-plugin-demo</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <!-- 宿主：Spring Boot + Spring AI。它依赖插件契约，但不依赖任何插件；插件 JAR 在运行时通过管理接口安装。 -->
+    <artifactId>agent-app</artifactId>
+    <packaging>jar</packaging>
+    <name>agent-app</name>
+    <description>Spring AI agent host that installs, runs and retires plugins at runtime</description>
+
+    <properties>
+        <spring-ai-agent-utils.version>0.13.0</spring-ai-agent-utils.version>
+    </properties>
+
+    <dependencies>
+        <!-- 插件契约：宿主运行时提供这些类（打进 BOOT-INF/lib），插件以 provided 范围编译在同一份契约上。 -->
+        <dependency>
+            <groupId>com.example</groupId>
+            <artifactId>agent-plugin-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- 模型提供方：DeepSeek 及其兼容接口（例如火山方舟）。换成其它 Spring AI starter 不影响插件系统。 -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-deepseek</artifactId>
+        </dependency>
+
+        <!-- Spring AI Agent Utils：提供每次对话默认注入的 ShellTools（Bash、BashOutput、KillShell）。 -->
+        <dependency>
+            <groupId>org.springaicommunity</groupId>
+            <artifactId>spring-ai-agent-utils</artifactId>
+            <version>${spring-ai-agent-utils.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

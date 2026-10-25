@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- 和宿主一起构建：宿主升级 Spring AI 或改动契约时，这个插件会在同一次构建里重新编译、回归。 -->
+    <parent>
+        <groupId>com.example</groupId>
+        <artifactId>spring-ai-plugin-demo</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <!-- 示例插件：抓取一个网页，返回它的 DOM 结构大纲，不需要数据库。它演示插件的打包规则：契约和 Spring AI 由宿主提供，
+         私有依赖 jsoup 经 shade 重定位到插件自己的包下，插件有自己独立的版本号（清单 META-INF/agent-plugin.json 取自这里）。 -->
+    <groupId>com.example.plugins</groupId>
+    <artifactId>web-dom-crawler-plugin</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+    <name>web-dom-crawler-plugin</name>
+    <description>Sample plugin: fetches a web page and returns its DOM outline</description>
+
+    <properties>
+        <jsoup.version>1.23.1</jsoup.version>
+    </properties>
+
+    <dependencies>
+        <!-- 运行时由宿主提供：编译时依赖，绝不打进插件包。 -->
+        <dependency>
+            <groupId>com.example</groupId>
+            <artifactId>agent-plugin-api</artifactId>
+            <version>${project.parent.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-model</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- 插件私有的依赖。插件类加载器是父优先的：宿主里一旦有同名的 org.jsoup 类（哪怕是别的版本），就会优先用宿主的。
+             所以下面的 shade 插件把它重定位到插件自己的包名下，让它成为真正私有的一份。 -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>${jsoup.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <resources>
+            <!-- 把清单里的 "version": "@project.version@" 替换成上面的版本号（Spring Boot 父 POM 约定的占位符格式）。 -->
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+            </resource>
+        </resources>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <executions>
+                    <!-- 替换 Spring Boot 父 POM 里面向应用的 shade 配置：产出一个普通 JAR，里面是插件的类和重定位后的 jsoup，
+                         这就是要上传的文件。 -->
+                    <execution>
+                        <id>default</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration combine.self="override">
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <relocations>
+                                <relocation>
+                                    <pattern>org.jsoup</pattern>
+                                    <shadedPattern>com.example.plugins.webdom.shaded.jsoup</shadedPattern>
+                                </relocation>
+                            </relocations>
+                            <filters>
+                                <filter>
+                                    <!-- 保留 jsoup 的类和 LICENSE；去掉它自己的 MANIFEST、Maven 元数据、ProGuard 规则，
+                                         以及 jsoup 内置 HTTP 客户端用的 Java 11 多版本类（本插件用 JDK 的 HttpClient）。 -->
+                                    <artifact>org.jsoup:jsoup</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/MANIFEST.MF</exclude>
+                                        <exclude>META-INF/maven/**</exclude>
+                                        <exclude>META-INF/proguard/**</exclude>
+                                        <exclude>META-INF/versions/**</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

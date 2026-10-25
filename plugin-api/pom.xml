@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.example</groupId>
+        <artifactId>spring-ai-plugin-demo</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <!-- 插件契约。它故意不声明任何依赖：能编译通过，就证明契约只依赖 JDK，既不会泄露宿主的类，也不绑定 Spring AI 版本。
+         插件以 provided 范围依赖它，运行时由宿主提供这些类。清单里的 "api": 1 就是这份契约的兼容版本。 -->
+    <artifactId>agent-plugin-api</artifactId>
+    <packaging>jar</packaging>
+    <name>agent-plugin-api</name>
+    <description>The contract that plugins compile against (provided scope)</description>
+</project>

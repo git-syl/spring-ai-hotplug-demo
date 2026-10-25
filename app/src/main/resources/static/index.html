@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent 插件示例</title>
+<link rel="icon" href="data:,">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.6 system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+         color: #1f2328; background: #f6f8fa; }
+  header { padding: 12px 20px; background: #fff; border-bottom: 1px solid #d0d7de; }
+  header h1 { margin: 0; font-size: 18px; }
+  main { display: flex; gap: 16px; padding: 16px 20px; height: calc(100vh - 92px); }
+  aside { width: 340px; flex-shrink: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+  #chat { flex: 1; display: flex; flex-direction: column; min-width: 0; background: #fff; border: 1px solid #d0d7de; border-radius: 8px; }
+  .card { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 12px 14px; }
+  h2 { margin: 0 0 8px; font-size: 15px; }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .row.between { justify-content: space-between; }
+  .muted { color: #59636e; }
+  .small { font-size: 12px; }
+  .error { color: #cf222e; white-space: pre-wrap; }
+  button { font: inherit; padding: 4px 12px; border: 1px solid #1f883d; border-radius: 6px; background: #1f883d; color: #fff; cursor: pointer; }
+  button.secondary { background: #f6f8fa; color: #1f2328; border-color: #d0d7de; }
+  button.danger { background: #fff; color: #cf222e; border-color: #cf222e; }
+  button.link { border: none; background: none; color: #0969da; padding: 0; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  select, textarea, input[type=file] { font: inherit; }
+  select { padding: 3px 6px; border: 1px solid #d0d7de; border-radius: 6px; }
+  .plugin { border-top: 1px solid #eaeef2; padding: 10px 0; display: flex; flex-direction: column; gap: 6px; }
+  .plugin:first-child { border-top: none; padding-top: 0; }
+  .badge { font-size: 12px; padding: 0 8px; border-radius: 10px; background: #eaeef2; color: #59636e; }
+  .badge.RUNNING { background: #dafbe1; color: #1a7f37; }
+  .badge.FAILED { background: #ffebe9; color: #cf222e; }
+  .tag { font-size: 12px; padding: 0 6px; margin-left: 6px; border-radius: 4px; background: #ddf4ff; color: #0969da; }
+  #messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 85%; padding: 8px 12px; border-radius: 8px; }
+  .msg.user { align-self: flex-end; background: #ddf4ff; white-space: pre-wrap; }
+  .msg.assistant { align-self: flex-start; background: #f6f8fa; border: 1px solid #eaeef2; display: flex; flex-direction: column; gap: 6px; min-width: 120px; }
+  .msg .text { white-space: pre-wrap; }
+  .tool, .approval { border: 1px solid #d0d7de; border-radius: 6px; padding: 6px 10px; background: #fff; }
+  .approval { border-color: #d4a72c; background: #fff8c5; }
+  pre { margin: 4px 0 0; padding: 6px 8px; background: #f6f8fa; border-radius: 4px; white-space: pre-wrap; word-break: break-all; max-height: 260px; overflow: auto; font-size: 12px; }
+  details summary { cursor: pointer; color: #59636e; font-size: 12px; }
+  #chat-form { border-top: 1px solid #d0d7de; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  textarea { width: 100%; padding: 8px; border: 1px solid #d0d7de; border-radius: 6px; resize: vertical; }
+  @media (max-width: 800px) { main { flex-direction: column; height: auto; } aside { width: auto; } #chat { min-height: 70vh; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Spring AI Agent 插件示例</h1>
+  <div class="muted small">每次对话默认可以使用 Bash（每次执行命令都需要你批准）；在左侧勾选插件后，插件的工具也会加入这次对话。</div>
+</header>
+<main>
+  <aside>
+    <section class="card">
+      <h2>安装插件</h2>
+      <form id="install-form" class="row">
+        <input type="file" id="plugin-file" accept=".jar" required>
+        <button type="submit">上传并安装</button>
+      </form>
+      <div id="install-status" class="small"></div>
+    </section>
+    <section class="card">
+      <div class="row between"><h2>已安装的插件</h2><button type="button" id="refresh" class="link">刷新</button></div>
+      <div id="plugin-list" class="muted">加载中…</div>
+    </section>
+  </aside>
+  <section id="chat">
+    <div id="messages"></div>
+    <form id="chat-form">
+      <div id="chat-tools" class="muted small"></div>
+      <textarea id="message" rows="3" placeholder="输入消息，Enter 发送，Shift + Enter 换行"></textarea>
+      <div class="row">
+        <button type="submit" id="send">发送</button>
+        <button type="button" id="stop" class="secondary" disabled>停止</button>
+      </div>
+    </form>
+  </section>
+</main>
+<script>
+'use strict';
+
+const JSON_HEADERS = { 'Content-Type': 'application/json' };
+const sessionId = crypto.randomUUID();
+const selected = new Set();          // 本次对话要启用的插件 ID
+let running = [];                    // 当前处于 RUNNING 的插件
+let controller = null;               // 进行中的对话，用于“停止”
+
+const $ = (selector) => document.querySelector(selector);
+
+/** 创建元素；字符串子节点一律作为文本插入，模型和工具的输出不会被当成 HTML 解析。 */
+function el(tag, attributes, ...children) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(attributes || {})) {
+    if (value === false || value == null) continue;
+    if (key.startsWith('on')) node.addEventListener(key.slice(2), value);
+    else node.setAttribute(key, value === true ? '' : value);
+  }
+  for (const child of children.flat()) {
+    if (child != null && child !== false) node.append(child instanceof Node ? child : String(child));
+  }
+  return node;
+}
+
+/** 调用 JSON 接口；非 2xx 时抛出带服务端 message 的错误（错误体是 {"code","message"}）。 */
+async function api(path, options = {}) {
+  const response = await fetch(path, options);
+  const text = await response.text();
+  let body = null;
+  try { body = text ? JSON.parse(text) : null; } catch { body = text; }
+  if (!response.ok) throw new Error((body && body.message) || `HTTP ${response.status}`);
+  return body;
+}
+
+// ---------- 插件 ----------
+
+function setStatus(text, isError) {
+  const status = $('#install-status');
+  status.className = isError ? 'small error' : 'small muted';
+  status.textContent = text;
+}
+
+async function loadPlugins() {
+  try {
+    const plugins = await api('/admin/plugins');
+    running = plugins.filter(plugin => plugin.state === 'RUNNING').map(plugin => plugin.id);
+    for (const id of [...selected]) if (!running.includes(id)) selected.delete(id);
+    const list = $('#plugin-list');
+    list.className = '';
+    list.replaceChildren(...(plugins.length ? plugins.map(renderPlugin) : [el('div', { class: 'muted' }, '还没有安装插件。')]));
+  } catch (error) {
+    $('#plugin-list').replaceChildren(el('div', { class: 'error' }, '读取插件列表失败：' + error.message));
+  }
+  renderChatTools();
+}
+
+function renderPlugin(plugin) {
+  const versions = plugin.versions.map(v => v.version);
+  const select = el('select', { 'aria-label': '版本' },
+    versions.map(version => el('option', { value: version, selected: version === (plugin.enabledVersion || versions.at(-1)) }, version)));
+  const id = encodeURIComponent(plugin.id);
+  const act = (label, run) => async (event) => {
+    event.target.disabled = true;
+    try {
+      await run();
+      setStatus(`${plugin.id}：${label}成功。`);
+    } catch (error) {
+      setStatus(`${plugin.id}：${label}失败：${error.message}`, true);
+    }
+    await loadPlugins();
+  };
+  const runtimes = plugin.runtimes.map(r => `${r.version} ${r.state} · 租约 ${r.leases} · 在途 ${r.inFlight}`).join('；');
+  return el('div', { class: 'plugin' },
+    el('div', { class: 'row between' }, el('strong', {}, plugin.name), el('span', { class: 'badge ' + plugin.state }, plugin.state)),
+    el('div', { class: 'muted small' }, plugin.id, ' · 工具：', plugin.tools.map(t => t.name + (t.requiresConfirmation ? '（需批准）' : '')).join('、')),
+    plugin.state === 'RUNNING' && el('label', { class: 'small' },
+      el('input', {
+        type: 'checkbox', checked: selected.has(plugin.id),
+        onchange: (event) => { event.target.checked ? selected.add(plugin.id) : selected.delete(plugin.id); renderChatTools(); }
+      }), ' 在对话中使用'),
+    el('div', { class: 'row' },
+      select,
+      el('button', { type: 'button', onclick: act('启用', () => api(`/admin/plugins/${id}/enable`,
+        { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ version: select.value }) })) }, '启用'),
+      el('button', { type: 'button', class: 'secondary', disabled: !plugin.enabledVersion,
+        onclick: act('停用', () => api(`/admin/plugins/${id}/disable`, { method: 'POST' })) }, '停用'),
+      el('button', { type: 'button', class: 'danger', disabled: plugin.state !== 'DISABLED',
+        onclick: (event) => confirm(`确定卸载插件 ${plugin.id}？`) &&
+          act('卸载', () => api(`/admin/plugins/${id}?purgeData=false`, { method: 'DELETE' }))(event) }, '卸载')),
+    runtimes && el('div', { class: 'muted small' }, '运行实例：', runtimes),
+    plugin.lastError && el('div', { class: 'error small' }, plugin.lastError));
+}
+
+$('#install-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const file = $('#plugin-file').files[0];
+  if (!file) return;
+  setStatus('正在上传…');
+  const form = new FormData();
+  form.append('file', file);   // 不要手动设置 Content-Type，浏览器会带上 multipart 的 boundary
+  try {
+    const response = await fetch('/admin/plugins', { method: 'POST', body: form });
+    const body = await response.json().catch(() => null);
+    if (!response.ok) throw new Error((body && body.message) || `HTTP ${response.status}`);
+    const version = body.versions.at(-1).version;
+    setStatus(response.status === 201
+      ? `已安装 ${body.id} ${version}（安装时不执行插件代码）。选择版本后点“启用”。`
+      : `${body.id} 的这个版本已经安装过了。`);
+    $('#plugin-file').value = '';
+  } catch (error) {
+    setStatus('安装失败：' + error.message, true);
+  }
+  await loadPlugins();
+});
+
+$('#refresh').addEventListener('click', loadPlugins);
+
+// ---------- 对话 ----------
+
+function renderChatTools() {
+  $('#chat-tools').textContent = '本次对话可用的工具：Bash' + [...selected].map(id => ' + 插件 ' + id).join('');
+}
+
+function scrollToEnd() {
+  const messages = $('#messages');
+  messages.scrollTop = messages.scrollHeight;
+}
+
+/** 工具参数是 JSON 字符串，格式化后更好读。 */
+function pretty(json) {
+  try { return JSON.stringify(JSON.parse(json), null, 2); } catch { return json || ''; }
+}
+
+/** 返回 Java 字符串的工具，结果是 JSON 编码后的字符串（带引号和转义），还原成原文显示。 */
+function readable(text) {
+  if (typeof text === 'string' && text.startsWith('"')) {
+    try { const value = JSON.parse(text); if (typeof value === 'string') return value; } catch { /* 原样显示 */ }
+  }
+  return text || '';
+}
+
+/** 一条助手消息：按到达顺序排列文字片段、工具调用和审批卡片。 */
+function assistantMessage() {
+  const bubble = el('div', { class: 'msg assistant' });
+  $('#messages').append(bubble);
+  const pending = new Map();         // 调用 ID → 等待结果的占位元素
+  const undecided = new Set();       // 还没有人处理的审批卡片的按钮区域
+  let text = null;
+  const add = (node) => { text = null; bubble.append(node); scrollToEnd(); };
+  return {
+    token(value) {
+      if (!text) { text = el('div', { class: 'text' }); bubble.append(text); }
+      text.textContent += value;
+      scrollToEnd();
+    },
+    toolCall(event) {
+      const result = el('div', { class: 'muted small' }, '执行中…');
+      pending.set(event.id, result);
+      add(el('div', { class: 'tool' },
+        el('div', {}, '🔧 ', el('strong', {}, event.tool), event.plugin && el('span', { class: 'tag' }, event.plugin)),
+        el('details', {}, el('summary', {}, '参数'), el('pre', {}, pretty(event.arguments))),
+        result));
+    },
+    toolResult(event) {
+      const result = el('details', {}, el('summary', {}, '结果'), el('pre', {}, readable(event.text)));
+      const placeholder = pending.get(event.id);
+      if (placeholder) { placeholder.replaceWith(result); pending.delete(event.id); } else add(result);
+      scrollToEnd();
+    },
+    approval(event) {
+      const actions = el('div', { class: 'row' });
+      const decide = async (approve) => {
+        undecided.delete(actions);
+        actions.querySelectorAll('button').forEach(button => { button.disabled = true; });
+        try {
+          const response = await fetch(`/approvals/${encodeURIComponent(event.id)}`,
+            { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ approve }) });
+          actions.replaceChildren(response.ok
+            ? el('span', { class: 'muted small' }, approve ? '✔ 已批准' : '✘ 已拒绝')
+            : el('span', { class: 'error small' }, '这条审批已经失效（超时、已处理或对话已结束）'));
+        } catch (error) {
+          actions.replaceChildren(el('span', { class: 'error small' }, '提交失败：' + error.message));
+        }
+      };
+      actions.append(
+        el('button', { type: 'button', onclick: () => decide(true) }, '批准'),
+        el('button', { type: 'button', class: 'secondary', onclick: () => decide(false) }, '拒绝'));
+      undecided.add(actions);
+      add(el('div', { class: 'approval' },
+        el('div', {}, '⏸ 需要你批准：', el('strong', {}, event.tool), event.plugin && el('span', { class: 'tag' }, event.plugin)),
+        el('pre', {}, pretty(event.arguments)),
+        actions));
+    },
+    note(value, isError) {
+      add(el('div', { class: isError ? 'error small' : 'muted small' }, value));
+    },
+    /** 对话结束（包括点了“停止”）：没人处理的审批不能再批准，服务端也会撤回它们，工具不会执行。 */
+    end() {
+      for (const actions of undecided) {
+        actions.replaceChildren(el('span', { class: 'muted small' }, '对话已结束，这条审批已撤回'));
+      }
+      undecided.clear();
+    },
+  };
+}
+
+function handle(event, view) {
+  switch (event.type) {
+    case 'token': view.token(event.text || ''); break;
+    case 'tool_call': view.toolCall(event); break;
+    case 'approval_request': view.approval(event); break;
+    case 'tool_result': view.toolResult(event); break;
+    case 'error': view.note('出错了：' + (event.text || ''), true); break;
+    default: break;   // heartbeat、finish 不需要显示
+  }
+}
+
+async function send(message) {
+  $('#messages').append(el('div', { class: 'msg user' }, message));
+  const view = assistantMessage();
+  controller = new AbortController();
+  $('#send').disabled = true;
+  $('#stop').disabled = false;
+  try {
+    // EventSource 只支持 GET，所以用 fetch 读取 POST 返回的 SSE 流，自己按行解析 "data:{...}"。
+    const response = await fetch('/chat/stream', {
+      method: 'POST',
+      headers: { ...JSON_HEADERS, Accept: 'text/event-stream' },
+      body: JSON.stringify({ message, plugins: [...selected], userId: 'web-demo', sessionId }),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      view.note('请求被拒绝：' + ((body && body.message) || `HTTP ${response.status}`), true);
+      return;
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let newline;
+      while ((newline = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, newline).replace(/\r$/, '');
+        buffer = buffer.slice(newline + 1);
+        if (line.startsWith('data:')) handle(JSON.parse(line.slice(5)), view);
+      }
+    }
+  } catch (error) {
+    view.note(error.name === 'AbortError' ? '已停止。' : '连接失败：' + error.message, error.name !== 'AbortError');
+  } finally {
+    view.end();
+    controller = null;
+    $('#send').disabled = false;
+    $('#stop').disabled = true;
+    loadPlugins();   // 刷新租约、在途调用等运行状态
+  }
+}
+
+$('#chat-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const input = $('#message');
+  const message = input.value.trim();
+  if (!message || controller) return;
+  input.value = '';
+  send(message);
+});
+
+$('#message').addEventListener('keydown', (event) => {
+  // isComposing：中文输入法选词时按下的 Enter 不应该发送消息。
+  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+    event.preventDefault();
+    $('#chat-form').requestSubmit();
+  }
+});
+
+$('#stop').addEventListener('click', () => controller && controller.abort());
+
+loadPlugins();
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+# Maven build output of every module
+target/
+# Plugin store and Bash workspace created at runtime (started from the root, or from the app module)
+/data/
+/app/data/
+# Output of the class-loading lab
+/classloader-lab/out/
+# IDE files
+.idea/
+*.iml
+.vscode/

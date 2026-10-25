@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.1.0</version>
+        <relativePath/>
+    </parent>
+
+    <!-- 聚合工程兼父 POM：插件契约、宿主和示例插件在同一次构建里编译和测试，共用 Java 与 Spring AI 版本。
+         宿主一升级 Spring AI 或改动契约，示例插件就会在同一次构建中重新编译、回归。 -->
+    <groupId>com.example</groupId>
+    <artifactId>spring-ai-plugin-demo</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>spring-ai-plugin-demo</name>
+    <description>A minimal runtime plugin system for a Spring AI agent</description>
+
+    <modules>
+        <module>plugin-api</module>
+        <module>app</module>
+        <module>plugin-sample/web-dom-crawler</module>
+    </modules>
+
+    <properties>
+        <java.version>25</java.version>
+        <spring-ai.version>2.1.0-RC1</spring-ai.version>
+        <!-- 在根目录执行 mvn test -Dtest=... 时，没有匹配测试的模块直接通过，而不是报错。 -->
+        <surefire.failIfNoSpecifiedTests>false</surefire.failIfNoSpecifiedTests>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+</project>

@@ -1,0 +1,5 @@
+* text=auto
+# Shell scripts must keep LF to run in bash; Windows batch files use CRLF.
+*.sh text eol=lf
+*.cmd text eol=crlf
+*.jar binary

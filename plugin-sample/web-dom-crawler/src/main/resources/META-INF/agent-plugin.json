@@ -1,0 +1,17 @@
+{
+  "api": 1,
+  "id": "webdom",
+  "version": "@project.version@",
+  "name": "网页 DOM 结构抓取",
+  "description": "抓取一个公开网页，返回 DOM 结构大纲（标签、id、class、关键属性和简短文本），用于理解页面布局或定位 CSS 选择器。不执行 JavaScript。",
+  "entrypoint": "com.example.plugins.webdom.WebDomPlugin",
+  "tools": [
+    {"name": "webdom_fetch_dom"}
+  ],
+  "config": [
+    {"key": "timeoutSeconds", "description": "一次抓取（含重定向）的总超时秒数", "default": "15"},
+    {"key": "maxBytes", "description": "单个页面的字节上限，超过即放弃", "default": "2097152"},
+    {"key": "maxNodes", "description": "一次大纲最多输出的元素数", "default": "400"},
+    {"key": "allowPrivateNetwork", "description": "是否允许抓取回环、内网和链路本地地址；默认 false，防止模型借此探测内网", "default": "false"}
+  ]
+}
